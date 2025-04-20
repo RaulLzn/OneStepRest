@@ -398,3 +398,41 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# --- OneStepRest Java / Gradle ignores ---
+
+# Gradle
+.gradle/
+build/
+!**/build.gradle
+!**/settings.gradle
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Logs
+*.log
+
+# Test reports
+build/reports/
+build/test-results/
+
+# H2 database files
+*.h2.db
+*.mv.db
+
+# Others
+out/
+bin/
+*.tmp
+*.swp
+.DS_Store
