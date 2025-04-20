@@ -18,6 +18,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -46,13 +49,13 @@ public class DynamicRestControllerIntegrationTest {
     @Transactional
     public void testCrudOperations() throws Exception {
         // 1. Crear una categoría
-        Categoria categoria = new Categoria();
-        categoria.setNombre("Electrónicos");
-        categoria.setDescripcion("Productos electrónicos y gadgets");
+        Map<String, Object> categoriaData = new HashMap<>();
+        categoriaData.put("nombre", "Electrónicos");
+        categoriaData.put("descripcion", "Productos electrónicos y gadgets");
         
         MvcResult categoriaResult = mockMvc.perform(post("/api/categorias")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(categoria)))
+                .content(objectMapper.writeValueAsString(categoriaData)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").exists())
                 .andExpect(jsonPath("$.nombre").value("Electrónicos"))
@@ -60,21 +63,18 @@ public class DynamicRestControllerIntegrationTest {
         
         // Extraer el ID de la categoría creada
         String categoriaResponse = categoriaResult.getResponse().getContentAsString();
-        Categoria createdCategoria = objectMapper.readValue(categoriaResponse, Categoria.class);
-        Long categoriaId = createdCategoria.getId();
+        Map<String, Object> createdCategoria = objectMapper.readValue(categoriaResponse, Map.class);
+        Number categoriaId = (Number) createdCategoria.get("id");
         
         // 2. Crear un producto asociado a la categoría
-        Producto producto = new Producto();
-        producto.setNombre("Smartphone XYZ");
-        producto.setPrecio(799.99);
-        
-        // Asociar el producto con la categoría - simplemente usando el ID
-        // No usamos el objeto completo para evitar ciclos
-        producto.setCategoriaId(categoriaId);
-        
+        Map<String, Object> productoData = new HashMap<>();
+        productoData.put("nombre", "Smartphone XYZ");
+        productoData.put("precio", 799.99);
+        productoData.put("categoriaId", categoriaId);
+
         MvcResult productoResult = mockMvc.perform(post("/api/productos")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(producto)))
+                .content(objectMapper.writeValueAsString(productoData)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").exists())
                 .andExpect(jsonPath("$.nombre").value("Smartphone XYZ"))
@@ -84,8 +84,8 @@ public class DynamicRestControllerIntegrationTest {
         
         // Extraer el ID del producto creado
         String productoResponse = productoResult.getResponse().getContentAsString();
-        Producto createdProducto = objectMapper.readValue(productoResponse, Producto.class);
-        Long productoId = createdProducto.getId();
+        Map<String, Object> createdProducto = objectMapper.readValue(productoResponse, Map.class);
+        Number productoId = (Number) createdProducto.get("id");
         
         // 3. Obtener todos los productos
         mockMvc.perform(get("/api/productos"))
@@ -101,15 +101,15 @@ public class DynamicRestControllerIntegrationTest {
                 .andExpect(jsonPath("$.nombre").value("Smartphone XYZ"));
         
         // 5. Actualizar un producto
-        Producto updatedProducto = new Producto();
-        updatedProducto.setId(productoId);
-        updatedProducto.setNombre("Smartphone XYZ Pro");
-        updatedProducto.setPrecio(899.99);
-        updatedProducto.setCategoriaId(categoriaId); // Usar ID en lugar del objeto completo
+        Map<String, Object> updatedProductoData = new HashMap<>();
+        updatedProductoData.put("id", productoId);
+        updatedProductoData.put("nombre", "Smartphone XYZ Pro");
+        updatedProductoData.put("precio", 899.99);
+        updatedProductoData.put("categoriaId", categoriaId); // Usar ID para la relación
         
         mockMvc.perform(put("/api/productos/{id}", productoId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(updatedProducto)))
+                .content(objectMapper.writeValueAsString(updatedProductoData)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.nombre").value("Smartphone XYZ Pro"))
                 .andExpect(jsonPath("$.precio").value(899.99));
@@ -132,9 +132,9 @@ public class DynamicRestControllerIntegrationTest {
     @Order(2)
     public void testValidation() throws Exception {
         // Producto con datos inválidos (sin nombre y precio negativo)
-        Producto invalidProducto = new Producto();
-        invalidProducto.setNombre(""); // Nombre vacío
-        invalidProducto.setPrecio(-10.0); // Precio negativo
+        Map<String, Object> invalidProducto = new HashMap<>();
+        invalidProducto.put("nombre", ""); // Nombre vacío
+        invalidProducto.put("precio", -10.0); // Precio negativo
         
         mockMvc.perform(post("/api/productos")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -151,13 +151,13 @@ public class DynamicRestControllerIntegrationTest {
     public void testPagination() throws Exception {
         // Crear múltiples productos para probar la paginación
         for (int i = 1; i <= 15; i++) {
-            Producto producto = new Producto();
-            producto.setNombre("Producto Test " + i);
-            producto.setPrecio(100.0 + i);
+            Map<String, Object> productoData = new HashMap<>();
+            productoData.put("nombre", "Producto Test " + i);
+            productoData.put("precio", 100.0 + i);
             
             mockMvc.perform(post("/api/productos")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(producto)))
+                    .content(objectMapper.writeValueAsString(productoData)))
                     .andExpect(status().isOk());
         }
         
@@ -185,39 +185,39 @@ public class DynamicRestControllerIntegrationTest {
     @Transactional
     public void testRelationships() throws Exception {
         // 1. Crear una categoría
-        Categoria categoria = new Categoria();
-        categoria.setNombre("Tecnología");
-        categoria.setDescripcion("Productos tecnológicos");
+        Map<String, Object> categoriaData = new HashMap<>();
+        categoriaData.put("nombre", "Tecnología");
+        categoriaData.put("descripcion", "Productos tecnológicos");
         
         MvcResult categoriaResult = mockMvc.perform(post("/api/categorias")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(categoria)))
+                .content(objectMapper.writeValueAsString(categoriaData)))
                 .andExpect(status().isOk())
                 .andReturn();
         
         String categoriaResponse = categoriaResult.getResponse().getContentAsString();
-        Categoria createdCategoria = objectMapper.readValue(categoriaResponse, Categoria.class);
-        Long categoriaId = createdCategoria.getId();
+        Map<String, Object> createdCategoria = objectMapper.readValue(categoriaResponse, Map.class);
+        Number categoriaId = (Number) createdCategoria.get("id");
         
         // 2. Agregar productos a través de la relación
-        Producto producto1 = new Producto();
-        producto1.setNombre("Laptop");
-        producto1.setPrecio(1299.99);
-        producto1.setCategoriaId(categoriaId);
+        Map<String, Object> producto1Data = new HashMap<>();
+        producto1Data.put("nombre", "Laptop");
+        producto1Data.put("precio", 1299.99);
+        producto1Data.put("categoriaId", categoriaId);
         
         mockMvc.perform(post("/api/productos")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(producto1)))
+                .content(objectMapper.writeValueAsString(producto1Data)))
                 .andExpect(status().isOk());
         
-        Producto producto2 = new Producto();
-        producto2.setNombre("Tablet");
-        producto2.setPrecio(499.99);
-        producto2.setCategoriaId(categoriaId);
+        Map<String, Object> producto2Data = new HashMap<>();
+        producto2Data.put("nombre", "Tablet");
+        producto2Data.put("precio", 499.99);
+        producto2Data.put("categoriaId", categoriaId);
         
         mockMvc.perform(post("/api/productos")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(producto2)))
+                .content(objectMapper.writeValueAsString(producto2Data)))
                 .andExpect(status().isOk());
         
         // 3. Verificar que podemos obtener los productos por categoría
@@ -226,5 +226,41 @@ public class DynamicRestControllerIntegrationTest {
                 .andExpect(jsonPath("$.id").value(categoriaId))
                 .andExpect(jsonPath("$.productos").isArray())
                 .andExpect(jsonPath("$.productos", hasSize(2)));
+    }
+    
+    @Test
+    @Order(5)
+    @Transactional
+    public void testRelationshipWithNestedObject() throws Exception {
+        // 1. Crear una categoría
+        Map<String, Object> categoriaData = new HashMap<>();
+        categoriaData.put("nombre", "Electrodomésticos");
+        categoriaData.put("descripcion", "Artículos para el hogar");
+        
+        MvcResult categoriaResult = mockMvc.perform(post("/api/categorias")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(categoriaData)))
+                .andExpect(status().isOk())
+                .andReturn();
+        
+        String categoriaResponse = categoriaResult.getResponse().getContentAsString();
+        Map<String, Object> createdCategoria = objectMapper.readValue(categoriaResponse, Map.class);
+        Number categoriaId = (Number) createdCategoria.get("id");
+        
+        // 2. Crear un producto con la categoría como objeto anidado
+        Map<String, Object> categoriaRef = new HashMap<>();
+        categoriaRef.put("id", categoriaId);
+        
+        Map<String, Object> productoData = new HashMap<>();
+        productoData.put("nombre", "Refrigerador");
+        productoData.put("precio", 1099.99);
+        productoData.put("categoria", categoriaRef); // Objeto anidado con ID
+        
+        mockMvc.perform(post("/api/productos")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(productoData)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categoria.id").value(categoriaId))
+                .andExpect(jsonPath("$.categoria.nombre").value("Electrodomésticos"));
     }
 }

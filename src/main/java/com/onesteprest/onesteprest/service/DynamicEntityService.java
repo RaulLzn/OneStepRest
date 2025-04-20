@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.onesteprest.onesteprest.annotations.RestModel;
 import com.onesteprest.onesteprest.exceptions.EntityValidationException;
 import com.onesteprest.onesteprest.utils.RelationshipUtil;
+import com.onesteprest.onesteprest.utils.EntityRelationshipManager;
+import com.onesteprest.onesteprest.utils.TypeConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -282,6 +284,9 @@ public class DynamicEntityService {
             throw new IllegalArgumentException("Invalid entity data type: " + requestData.getClass().getName());
         }
         
+        // Process relationships
+        entity = EntityRelationshipManager.processRelationshipFields(entity, requestData, entityManager);
+        
         // Pre-process entity
         entity = eventPublisher.publishBeforeCreate(modelClass, entity);
         
@@ -290,7 +295,7 @@ public class DynamicEntityService {
             Map<String, String> validationErrors = validationService.validate(entity);
             if (!validationErrors.isEmpty()) {
                 throw new EntityValidationException("Validation failed for " + modelClass.getSimpleName(), 
-                                                  validationErrors);
+                                                 validationErrors);
             }
         }
         
@@ -318,7 +323,7 @@ public class DynamicEntityService {
         Class<?> modelClass = getModelClass(modelPath);
         
         // Convert id to the appropriate type
-        Object typedId = convertToAppropriateType(id, getIdType(modelClass));
+        Object typedId = TypeConverter.convertToAppropriateType(id, getIdType(modelClass));
         
         // Check if entity exists
         Object existingEntity = entityManager.find(modelClass, typedId);
@@ -340,6 +345,9 @@ public class DynamicEntityService {
             throw new IllegalArgumentException("Invalid entity data type: " + requestData.getClass().getName());
         }
         
+        // Process relationships
+        entity = EntityRelationshipManager.processRelationshipFields(entity, requestData, entityManager);
+        
         // Pre-process entity
         entity = eventPublisher.publishBeforeUpdate(modelClass, entity, typedId);
         
@@ -348,7 +356,7 @@ public class DynamicEntityService {
             Map<String, String> validationErrors = validationService.validate(entity);
             if (!validationErrors.isEmpty()) {
                 throw new EntityValidationException("Validation failed for " + modelClass.getSimpleName(), 
-                                                  validationErrors);
+                                                 validationErrors);
             }
         }
         

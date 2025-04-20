@@ -61,33 +61,7 @@ public class Producto {
     }
     
     public void setCategoria(Categoria categoria) {
-        // Remove from old categoria if exists
-        if (this.categoria != null && !this.categoria.equals(categoria)) {
-            this.categoria.getProductos().remove(this);
-        }
-        
         this.categoria = categoria;
-        
-        // Add to new categoria if not null
-        if (categoria != null && !categoria.getProductos().contains(this)) {
-            categoria.getProductos().add(this);
-        }
-    }
-    
-    // Helper method for tests to set categoria by ID
-    public void setCategoriaId(Long categoriaId) {
-        if (categoriaId != null) {
-            Categoria cat = new Categoria();
-            cat.setId(categoriaId);
-            this.categoria = cat;
-        } else {
-            this.categoria = null;
-        }
-    }
-    
-    // Helper method to get categoriaId
-    public Long getCategoriaId() {
-        return categoria != null ? categoria.getId() : null;
     }
     
     @Override

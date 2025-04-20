@@ -59,25 +59,6 @@ public class Categoria {
         this.productos = productos;
     }
     
-    public void addProducto(Producto producto) {
-        if (producto != null) {
-            if (productos == null) {
-                productos = new ArrayList<>();
-            }
-            productos.add(producto);
-            producto.setCategoria(this);
-        }
-    }
-    
-    public void removeProducto(Producto producto) {
-        if (producto != null && productos != null) {
-            productos.remove(producto);
-            if (producto.getCategoria() == this) {
-                producto.setCategoria(null);
-            }
-        }
-    }
-    
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
