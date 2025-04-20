@@ -3,14 +3,19 @@ package com.onesteprest.onesteprest.utils;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Set;
 
 /**
  * Utility class that handles entity relationships automatically.
@@ -85,6 +90,10 @@ public class EntityRelationshipManager {
                         setRelationshipById(entity, field, relatedId, entityManager);
                     }
                 }
+                // If it's a List (for ManyToMany or OneToMany)
+                else if (relationshipData instanceof List && Collection.class.isAssignableFrom(field.getType())) {
+                    processCollectionRelationship(entity, field, (List<?>) relationshipData, entityManager);
+                }
             }
         }
         
@@ -104,6 +113,80 @@ public class EntityRelationshipManager {
                 } catch (NoSuchFieldException e) {
                     // Field doesn't exist, skip
                     continue;
+                }
+            }
+            // Check if this is a relationship IDs field (ends with "Ids")
+            else if (key.endsWith("Ids") && dataMap.get(key) != null && dataMap.get(key) instanceof List) {
+                String relationshipFieldName = key.substring(0, key.length() - 3); // Remove "Ids"
+                
+                // Try to find the actual relationship field
+                try {
+                    Field relationshipField = entityClass.getDeclaredField(relationshipFieldName);
+                    if (isCollectionRelationship(relationshipField)) {
+                        List<?> relatedIds = (List<?>) dataMap.get(key);
+                        setCollectionRelationshipByIds(entity, relationshipField, relatedIds, entityManager);
+                    }
+                } catch (NoSuchFieldException e) {
+                    // Field doesn't exist, skip
+                    continue;
+                }
+            }
+        }
+    }
+    
+    /**
+     * Processes a collection relationship value from request data.
+     */
+    private static <T> void processCollectionRelationship(T entity, Field field, List<?> items, EntityManager entityManager) throws Exception {
+        Class<?> elementType = RelationshipUtil.getCollectionGenericType(field);
+        if (elementType == null) {
+            return;
+        }
+        
+        // Create new collection if needed
+        Collection<Object> collection;
+        if (field.get(entity) == null) {
+            if (List.class.isAssignableFrom(field.getType())) {
+                collection = new ArrayList<>();
+            } else if (Set.class.isAssignableFrom(field.getType())) {
+                collection = new HashSet<>();
+            } else {
+                return; // Unsupported collection type
+            }
+            field.set(entity, collection);
+        } else {
+            collection = (Collection<Object>) field.get(entity);
+            collection.clear();  // Clear existing items
+        }
+        
+        // Process each item in the list
+        for (Object item : items) {
+            if (item instanceof Map) {
+                Map<String, Object> itemMap = (Map<String, Object>) item;
+                if (itemMap.containsKey("id")) {
+                    Object id = itemMap.get("id");
+                    Object relatedEntity = entityManager.find(elementType, TypeConverter.convertToAppropriateType(id, getIdType(elementType)));
+                    if (relatedEntity != null) {
+                        collection.add(relatedEntity);
+                    }
+                }
+            } else if (item instanceof Number) {
+                // If it's just an ID
+                Object relatedEntity = entityManager.find(elementType, TypeConverter.convertToAppropriateType(item, getIdType(elementType)));
+                if (relatedEntity != null) {
+                    collection.add(relatedEntity);
+                }
+            }
+        }
+
+        // Add code to maintain bidirectional integrity
+        if (field.isAnnotationPresent(ManyToMany.class)) {
+            ManyToMany manyToMany = field.getAnnotation(ManyToMany.class);
+            // If this is the owning side (no mappedBy)
+            if (manyToMany.mappedBy().isEmpty()) {
+                for (Object relatedEntity : collection) {
+                    // Find the inverse side field in the related entity
+                    updateManyToManyInverseReference(entity, relatedEntity, field);
                 }
             }
         }
@@ -137,6 +220,54 @@ public class EntityRelationshipManager {
     }
     
     /**
+     * Sets a collection relationship field using a list of IDs.
+     */
+    private static <T> void setCollectionRelationshipByIds(T entity, Field relationshipField, List<?> idValues, EntityManager entityManager) throws Exception {
+        relationshipField.setAccessible(true);
+        
+        // Skip if not a collection
+        if (!Collection.class.isAssignableFrom(relationshipField.getType())) {
+            return;
+        }
+        
+        // Get element type
+        Class<?> elementType = RelationshipUtil.getCollectionGenericType(relationshipField);
+        if (elementType == null) {
+            return;
+        }
+        
+        // Create new collection if needed
+        Collection<Object> collection;
+        if (relationshipField.get(entity) == null) {
+            if (List.class.isAssignableFrom(relationshipField.getType())) {
+                collection = new ArrayList<>();
+            } else if (Set.class.isAssignableFrom(relationshipField.getType())) {
+                collection = new HashSet<>();
+            } else {
+                return; // Unsupported collection type
+            }
+            relationshipField.set(entity, collection);
+        } else {
+            collection = (Collection<Object>) relationshipField.get(entity);
+            collection.clear();  // Clear existing items
+        }
+        
+        // Get ID type for the element
+        Class<?> idType = getIdType(elementType);
+        
+        // Find and add each related entity by ID
+        for (Object idValue : idValues) {
+            Object typedId = TypeConverter.convertToAppropriateType(idValue, idType);
+            if (typedId != null) {
+                Object relatedEntity = entityManager.find(elementType, typedId);
+                if (relatedEntity != null) {
+                    collection.add(relatedEntity);
+                }
+            }
+        }
+    }
+    
+    /**
      * Ensures that bidirectional relationships are properly maintained.
      */
     private static <T> void ensureBidirectionalRelationships(T entity, EntityManager entityManager) throws Exception {
@@ -150,14 +281,14 @@ public class EntityRelationshipManager {
                 continue;
             }
             
-            Object relatedEntity = field.get(entity);
-            if (relatedEntity == null) {
+            Object relatedValue = field.get(entity);
+            if (relatedValue == null) {
                 continue;
             }
             
             // Handle ManyToOne relationship
             if (field.isAnnotationPresent(ManyToOne.class)) {
-                updateOneToManyBackReference(entity, relatedEntity, field);
+                updateOneToManyBackReference(entity, relatedValue, field);
             }
             
             // Handle OneToMany relationship
@@ -173,19 +304,103 @@ public class EntityRelationshipManager {
                 }
             }
             
+            // Handle ManyToMany relationship
+            else if (field.isAnnotationPresent(ManyToMany.class)) {
+                ManyToMany manyToMany = field.getAnnotation(ManyToMany.class);
+                String mappedBy = manyToMany.mappedBy();
+                
+                if (!mappedBy.isEmpty() && field.get(entity) instanceof Collection) {
+                    // This is the inverse side, update the owning side
+                    Collection<?> collection = (Collection<?>) field.get(entity);
+                    for (Object item : collection) {
+                        updateManyToManyOwningReference(entity, item, mappedBy);
+                    }
+                } else if (field.get(entity) instanceof Collection) {
+                    // This is the owning side, update the inverse side if it exists
+                    Collection<?> collection = (Collection<?>) field.get(entity);
+                    for (Object item : collection) {
+                        updateManyToManyInverseReference(entity, item, field);
+                    }
+                }
+            }
+            
             // Handle OneToOne relationship
             else if (field.isAnnotationPresent(OneToOne.class)) {
                 OneToOne oneToOne = field.getAnnotation(OneToOne.class);
                 String mappedBy = oneToOne.mappedBy();
                 
                 if (!mappedBy.isEmpty()) {
-                    setBackReference(relatedEntity, mappedBy, entity);
+                    setBackReference(relatedValue, mappedBy, entity);
                 } else if (field.isAnnotationPresent(JoinColumn.class)) {
                     // This is the owning side, try to find mapped by on the other side
-                    updateOneToOneBackReference(entity, relatedEntity, field);
+                    updateOneToOneBackReference(entity, relatedValue, field);
                 }
             }
         }
+    }
+    
+    /**
+     * Updates the owning side of a ManyToMany relationship.
+     */
+    private static void updateManyToManyOwningReference(Object inverseEntity, Object owningEntity, String mappedByField) throws Exception {
+        Field field = findField(owningEntity.getClass(), mappedByField);
+        if (field == null || !field.isAnnotationPresent(ManyToMany.class)) {
+            return;
+        }
+        
+        field.setAccessible(true);
+        Collection<Object> owningCollection = getOrCreateCollection(owningEntity, field);
+        
+        // Add the inverse entity if it doesn't already exist
+        if (!owningCollection.contains(inverseEntity)) {
+            owningCollection.add(inverseEntity);
+        }
+    }
+    
+    /**
+     * Updates the inverse side of a ManyToMany relationship.
+     */
+    private static void updateManyToManyInverseReference(Object owningEntity, Object inverseEntity, Field owningField) throws Exception {
+        // Find the inverse field (with mappedBy pointing to this field)
+        for (Field field : inverseEntity.getClass().getDeclaredFields()) {
+            if (!field.isAnnotationPresent(ManyToMany.class)) {
+                continue;
+            }
+            
+            ManyToMany manyToMany = field.getAnnotation(ManyToMany.class);
+            String mappedBy = manyToMany.mappedBy();
+            
+            if (!mappedBy.isEmpty() && mappedBy.equals(owningField.getName())) {
+                field.setAccessible(true);
+                Collection<Object> inverseCollection = getOrCreateCollection(inverseEntity, field);
+                
+                // Add the owning entity if it doesn't already exist
+                if (!inverseCollection.contains(owningEntity)) {
+                    inverseCollection.add(owningEntity);
+                }
+                
+                break;
+            }
+        }
+    }
+    
+    /**
+     * Gets or creates a collection for an entity's field.
+     */
+    private static Collection<Object> getOrCreateCollection(Object entity, Field field) throws Exception {
+        field.setAccessible(true);
+        Collection<Object> collection = (Collection<Object>) field.get(entity);
+        
+        if (collection == null) {
+            if (List.class.isAssignableFrom(field.getType())) {
+                collection = new ArrayList<>();
+            } else {
+                collection = new HashSet<>();
+            }
+            field.set(entity, collection);
+        }
+        
+        return collection;
     }
     
     /**
@@ -255,7 +470,17 @@ public class EntityRelationshipManager {
     private static boolean isEntityRelationship(Field field) {
         return field.isAnnotationPresent(ManyToOne.class) ||
                field.isAnnotationPresent(OneToMany.class) ||
+               field.isAnnotationPresent(ManyToMany.class) ||
                field.isAnnotationPresent(OneToOne.class);
+    }
+    
+    /**
+     * Checks if a field is a collection relationship field.
+     */
+    private static boolean isCollectionRelationship(Field field) {
+        return Collection.class.isAssignableFrom(field.getType()) && 
+              (field.isAnnotationPresent(OneToMany.class) || 
+               field.isAnnotationPresent(ManyToMany.class));
     }
     
     /**

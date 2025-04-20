@@ -7,6 +7,9 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * Example model class annotated with @RestModel.
  * This will generate CRUD endpoints for the "Producto" type.
@@ -30,6 +33,15 @@ public class Producto {
     @JoinColumn(name = "categoria_id")
     @JsonIgnoreProperties({"productos"})
     private Categoria categoria;
+    
+    @ManyToMany(cascade = {CascadeType.PERSIST, CascadeType.MERGE})
+    @JoinTable(
+        name = "producto_etiqueta",
+        joinColumns = @JoinColumn(name = "producto_id"),
+        inverseJoinColumns = @JoinColumn(name = "etiqueta_id")
+    )
+    @JsonIgnoreProperties({"productos"})
+    private Set<Etiqueta> etiquetas = new HashSet<>();
 
     // Getters and setters
     public Long getId() {
@@ -62,6 +74,14 @@ public class Producto {
     
     public void setCategoria(Categoria categoria) {
         this.categoria = categoria;
+    }
+    
+    public Set<Etiqueta> getEtiquetas() {
+        return etiquetas;
+    }
+    
+    public void setEtiquetas(Set<Etiqueta> etiquetas) {
+        this.etiquetas = etiquetas;
     }
     
     @Override

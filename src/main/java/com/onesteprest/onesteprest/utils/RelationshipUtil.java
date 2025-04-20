@@ -81,22 +81,58 @@ public class RelationshipUtil {
                             // If it's a JPA managed relationship, load the collection properly
                             Object id = getEntityId(entity);
                             if (id != null) {
-                                // Try to load the entire collection in one go if possible
-                                String mappedByField = getMappedByField(entityClass, field);
-                                if (mappedByField != null) {
-                                    String jpql = "SELECT e FROM " + elementType.getSimpleName() + 
-                                           " e WHERE e." + mappedByField + ".id = :parentId";
-                                    Query query = entityManager.createQuery(jpql);
-                                    query.setParameter("parentId", id);
-                                    List<?> items = query.getResultList();
+                                // Handle @ManyToMany relationships
+                                if (field.isAnnotationPresent(jakarta.persistence.ManyToMany.class)) {
+                                    jakarta.persistence.ManyToMany manyToMany = field.getAnnotation(jakarta.persistence.ManyToMany.class);
+                                    String mappedBy = manyToMany.mappedBy();
                                     
-                                    // Replace the collection with loaded items
-                                    Collection<Object> loadedItems = new ArrayList<>();
-                                    for (Object item : items) {
-                                        loadedItems.add(loadRelationshipsRecursive(item, entityManager, depth - 1, processed));
+                                    // If it's the inverse side (has mappedBy)
+                                    if (!mappedBy.isEmpty()) {
+                                        // Use a query to fetch related entities
+                                        String jpql = "SELECT e FROM " + elementType.getSimpleName() + 
+                                               " e JOIN e." + mappedBy + " r WHERE r.id = :parentId";
+                                        Query query = entityManager.createQuery(jpql);
+                                        query.setParameter("parentId", id);
+                                        List<?> items = query.getResultList();
+                                        
+                                        // Replace the collection with loaded items
+                                        Collection<Object> loadedItems = new ArrayList<>();
+                                        for (Object item : items) {
+                                            loadedItems.add(loadRelationshipsRecursive(item, entityManager, depth - 1, processed));
+                                        }
+                                        
+                                        replaceCollection(entity, field, loadedItems);
                                     }
-                                    
-                                    replaceCollection(entity, field, loadedItems);
+                                    // If it's the owning side (does not have mappedBy)
+                                    else {
+                                        // In this case JPA already loads the collection, but we need to process the items recursively
+                                        Collection<?> collectionItems = (Collection<?>) field.get(entity);
+                                        if (collectionItems != null && !collectionItems.isEmpty()) {
+                                            Collection<Object> processedItems = new ArrayList<>();
+                                            for (Object item : collectionItems) {
+                                                processedItems.add(loadRelationshipsRecursive(item, entityManager, depth - 1, processed));
+                                            }
+                                            replaceCollection(entity, field, processedItems);
+                                        }
+                                    }
+                                } else {
+                                    // Try to load the entire collection in one go if possible
+                                    String mappedByField = getMappedByField(entityClass, field);
+                                    if (mappedByField != null) {
+                                        String jpql = "SELECT e FROM " + elementType.getSimpleName() + 
+                                               " e WHERE e." + mappedByField + ".id = :parentId";
+                                        Query query = entityManager.createQuery(jpql);
+                                        query.setParameter("parentId", id);
+                                        List<?> items = query.getResultList();
+                                        
+                                        // Replace the collection with loaded items
+                                        Collection<Object> loadedItems = new ArrayList<>();
+                                        for (Object item : items) {
+                                            loadedItems.add(loadRelationshipsRecursive(item, entityManager, depth - 1, processed));
+                                        }
+                                        
+                                        replaceCollection(entity, field, loadedItems);
+                                    }
                                 }
                             }
                         }
