@@ -1,4 +1,4 @@
-package com.onesteprest.annotations;
+package com.onesteprest.onesteprest.annotations;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -14,20 +14,32 @@ import java.lang.annotation.Target;
  * 
  * Example usage:
  * <pre>
- * &#64;RestModel(path = "/productos")
+ * &#64;RestModel(path = "/productos", enableValidation = true)
  * public class Producto {
+ *     &#64;NotNull
+ *     private String nombre;
+ *     
+ *     &#64;Min(0)
+ *     private Double precio;
+ *     
  *     // Class implementation
  * }
  * </pre>
  * 
- * The above example will generate REST endpoints such as "/productos/{id}".
- * 
  * Attributes:
  * - {@code path}: Specifies the base path for the REST model. This is a required attribute.
+ * - {@code enableValidation}: Enables or disables validation for this model. Default is true.
  */
 @Target(ElementType.TYPE) 
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RestModel {
 
     String path();
+    
+    /**
+     * Whether to enable validation for this model.
+     * When enabled, validation will be performed on create and update operations.
+     * Default is true.
+     */
+    boolean enableValidation() default true;
 }

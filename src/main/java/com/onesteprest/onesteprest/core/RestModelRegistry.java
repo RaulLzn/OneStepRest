@@ -1,10 +1,12 @@
-package com.onesteprest.core;
+package com.onesteprest.onesteprest.core;
 
-import com.onesteprest.annotations.RestModel;
+import com.onesteprest.onesteprest.annotations.RestModel;
+import com.onesteprest.onesteprest.config.OneStepRestConfig;
+import com.onesteprest.onesteprest.service.DynamicEntityService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 import java.util.Set;
 
 /**
@@ -15,23 +17,40 @@ public class RestModelRegistry {
 
     @Autowired
     private RestModelScanner restModelScanner;
+    
+    @Autowired
+    private DynamicEntityService entityService;
+    
+    @Autowired
+    private OneStepRestConfig config;
 
     /**
      * Registers all models annotated with @RestModel.
      */
     @PostConstruct
     public void registerModels() {
-        String basePackage = "com.onesteprest.examples"; // Adjust this to your package structure
-        Set<Class<?>> restModels = restModelScanner.scanForRestModels(basePackage);
+        String basePackage = config.getDefaultModelPackage();
+        try {
+            Set<Class<?>> restModels = restModelScanner.scanForRestModels(basePackage);
 
-        for (Class<?> modelClass : restModels) {
-            RestModel restModel = modelClass.getAnnotation(RestModel.class);
-            String basePath = restModel.path();
+            if (restModels.isEmpty()) {
+                System.err.println("No models found annotated with @RestModel in package: " + basePackage);
+                return;
+            }
 
-            // Log the registration for now
-            System.out.println("Registering model: " + modelClass.getSimpleName() + " at path: " + basePath);
+            for (Class<?> modelClass : restModels) {
+                RestModel restModel = modelClass.getAnnotation(RestModel.class);
+                String basePath = restModel.path();
 
-            // In future, connect these models dynamically to the DynamicRestController
+                // Log the registration of the model
+                System.out.println("Registering model: " + modelClass.getSimpleName() + " at path: " + basePath);
+
+                // Register the model with the service
+                entityService.registerModel(modelClass);
+            }
+        } catch (Exception e) {
+            System.err.println("Error occurred while registering models: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }

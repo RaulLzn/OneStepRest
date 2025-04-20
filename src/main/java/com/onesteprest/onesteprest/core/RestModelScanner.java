@@ -1,7 +1,9 @@
-package com.onesteprest.core;
+package com.onesteprest.onesteprest.core;
 
-import com.onesteprest.annotations.RestModel;
+import com.onesteprest.onesteprest.annotations.RestModel;
 import org.reflections.Reflections;
+import org.reflections.scanners.Scanners;
+import org.reflections.util.ConfigurationBuilder;
 import org.springframework.stereotype.Component;
 import java.util.Set;
 
@@ -19,7 +21,11 @@ public class RestModelScanner {
      * @return a set of classes annotated with @RestModel
      */
     public Set<Class<?>> scanForRestModels(String basePackage) {
-        Reflections reflections = new Reflections(basePackage);
+        // Create properly configured Reflections instance
+        Reflections reflections = new Reflections(new ConfigurationBuilder()
+            .forPackage(basePackage)
+            .setScanners(Scanners.TypesAnnotated, Scanners.SubTypes));
+            
         // Find all classes annotated with @RestModel
         return reflections.getTypesAnnotatedWith(RestModel.class);
     }
