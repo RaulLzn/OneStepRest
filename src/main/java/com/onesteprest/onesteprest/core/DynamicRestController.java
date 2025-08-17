@@ -1,6 +1,10 @@
 package com.onesteprest.onesteprest.core;
 
 import com.onesteprest.onesteprest.config.OneStepRestConfig;
+import com.onesteprest.onesteprest.filters.Filter;
+import com.onesteprest.onesteprest.filters.FilterOperation;
+import com.onesteprest.onesteprest.filters.FilterParser;
+import com.onesteprest.onesteprest.filters.FilterSpecification;
 import com.onesteprest.onesteprest.service.DynamicEntityService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -17,7 +21,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+
 
 /**
  * A generic controller to handle CRUD operations dynamically.
@@ -33,10 +39,13 @@ public class DynamicRestController {
     @Autowired
     private OneStepRestConfig config;
     
+    @Autowired
+    private FilterParser filterParser;
+    
     /**
      * Get all entities of a specific model with optional pagination.
      */
-    @GetMapping("/{model}")  // Changed from "${onesteprest.api-base-path:}/api/{model}"
+    @GetMapping("/{model}") 
     @Operation(
         summary = "Get all entities of a specific model",
         description = "Retrieves all entities of the specified model type with optional pagination"
@@ -56,24 +65,68 @@ public class DynamicRestController {
             @Parameter(description = "Sort direction (asc,desc)")
             @RequestParam(required = false, defaultValue = "asc") String direction,
             @Parameter(description = "Sort by field")
-            @RequestParam(required = false) String sortBy) {
+            @RequestParam(required = false) String sortBy,
+            @Parameter(description = "JSON filter specification")
+            @RequestParam(required = false) String filter,
+            @RequestParam Map<String, String[]> allParams) {
         
-        // Check if pagination is requested
-        if (page >= 0) {
-            Sort sort = Sort.unsorted();
-            if (sortBy != null && !sortBy.isEmpty()) {
-                sort = direction.equalsIgnoreCase("desc") ? 
-                    Sort.by(sortBy).descending() : 
-                    Sort.by(sortBy).ascending();
+        try {
+            System.out.println("Received request for model: " + model + " with parameters: " + allParams);
+            
+            // Parse filter specification
+            FilterSpecification filterSpec = null;
+            if (filter != null && !filter.isEmpty()) {
+                // JSON format filter
+                filterSpec = filterParser.parseFromJson(filter);
+            } else {
+                // Query parameter format filter
+                filterSpec = filterParser.parseFromQueryParams(allParams);
             }
             
-            Pageable pageable = PageRequest.of(page, size, sort);
-            Page<Object> pageResult = entityService.findAll(model, pageable);
-            return ResponseEntity.ok(pageResult);
-        } else {
-            // Return all items without pagination
-            List<Object> entities = entityService.findAll(model);
-            return ResponseEntity.ok(entities);
+            if (filterSpec != null && filterSpec.hasFilters()) {
+                System.out.println("Parsed " + filterSpec.getFilters().size() + 
+                                   " filters with logic " + filterSpec.getLogic());
+            } else {
+                System.out.println("No filters parsed from request");
+            }
+            
+            // Check if pagination is requested
+            if (page >= 0) {
+                Sort sort = Sort.unsorted();
+                if (sortBy != null && !sortBy.isEmpty()) {
+                    sort = direction.equalsIgnoreCase("desc") ? 
+                        Sort.by(sortBy).descending() : 
+                        Sort.by(sortBy).ascending();
+                }
+                
+                Pageable pageable = PageRequest.of(page, size, sort);
+                
+                // Use filtered query if filters are provided, otherwise use standard query
+                Page<Object> pageResult;
+                if (filterSpec != null && filterSpec.hasFilters()) {
+                    pageResult = entityService.findAllWithFilter(model, filterSpec, pageable);
+                } else {
+                    pageResult = entityService.findAll(model, pageable);
+                }
+                
+                return ResponseEntity.ok(pageResult);
+            } else {
+                // For non-paginated requests
+                if (filterSpec != null && filterSpec.hasFilters()) {
+                    System.out.println("Applying filters to non-paginated request");
+                    // Apply filters with a high page size
+                    Pageable pageable = PageRequest.of(0, 10000);
+                    Page<Object> pageResult = entityService.findAllWithFilter(model, filterSpec, pageable);
+                    return ResponseEntity.ok(pageResult.getContent());
+                } else {
+                    // Return all items without pagination or filtering
+                    List<Object> entities = entityService.findAll(model);
+                    return ResponseEntity.ok(entities);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("Error processing request: " + e.getMessage());
         }
     }
 

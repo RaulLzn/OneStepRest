@@ -2,9 +2,6 @@ package com.onesteprest.onesteprest;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.onesteprest.onesteprest.core.RestModelRegistry;
-import com.onesteprest.onesteprest.examples.Categoria;
-import com.onesteprest.onesteprest.examples.Producto;
-
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;

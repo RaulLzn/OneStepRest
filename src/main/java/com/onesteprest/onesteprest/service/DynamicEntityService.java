@@ -6,6 +6,8 @@ import com.onesteprest.onesteprest.exceptions.EntityValidationException;
 import com.onesteprest.onesteprest.utils.RelationshipUtil;
 import com.onesteprest.onesteprest.utils.EntityRelationshipManager;
 import com.onesteprest.onesteprest.utils.TypeConverter;
+import com.onesteprest.onesteprest.filters.FilterExecutor;
+import com.onesteprest.onesteprest.filters.FilterSpecification;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -42,6 +44,9 @@ public class DynamicEntityService {
     
     @Autowired
     private ObjectMapper objectMapper;
+    
+    @Autowired
+    private FilterExecutor filterExecutor;
     
     // Maps path segment (e.g. "productos") to its Class
     private final Map<String, Class<?>> modelMap = new HashMap<>();
@@ -768,5 +773,72 @@ public class DynamicEntityService {
             throw new RuntimeException("Failed to get entity ID: " + e.getMessage(), e);
         }
         return null;
+    }
+    
+    /**
+     * Finds all entities of a given model type with filtering and pagination.
+     *
+     * @param modelPath The path segment for the model
+     * @param filterSpec The filter specification to apply
+     * @param pageable Pagination information
+     * @return Page of entities matching the filter criteria
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    @Transactional(readOnly = true)
+    public Page<Object> findAllWithFilter(String modelPath, FilterSpecification filterSpec, Pageable pageable) {
+        Class<?> modelClass = getModelClass(modelPath);
+        
+        // Create criteria builder and query
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+        CriteriaQuery<Object> query = cb.createQuery((Class<Object>) modelClass);
+        Root<?> root = query.from(modelClass);
+        query.select(root);
+        
+        // Apply filter if provided
+        if (filterSpec != null && filterSpec.hasFilters()) {
+            query = filterExecutor.applyFilter(root, query, cb, filterSpec);
+        }
+        
+        // Apply sorting if specified
+        if (pageable.getSort().isSorted()) {
+            // Apply sorting logic
+            List<jakarta.persistence.criteria.Order> orders = new ArrayList<>();
+            pageable.getSort().forEach(order -> {
+                if (order.isAscending()) {
+                    orders.add(cb.asc(root.get(order.getProperty())));
+                } else {
+                    orders.add(cb.desc(root.get(order.getProperty())));
+                }
+            });
+            query.orderBy(orders);
+        }
+        
+        // Create count query for pagination
+        CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
+        Root<?> countRoot = countQuery.from(modelClass);
+        countQuery.select(cb.count(countRoot));
+        
+        // Apply same filters to count query
+        if (filterSpec != null && filterSpec.hasFilters()) {
+            countQuery = filterExecutor.applyFilter(countRoot, countQuery, cb, filterSpec);
+        }
+        
+        // Get total count
+        Long count = entityManager.createQuery(countQuery).getSingleResult();
+        
+        // Execute the main query with pagination
+        TypedQuery<?> typedQuery = entityManager.createQuery(query)
+                .setFirstResult((int) pageable.getOffset())
+                .setMaxResults(pageable.getPageSize());
+        
+        List<?> resultList = typedQuery.getResultList();
+        
+        // Load relationships for each entity
+        List<Object> enrichedResults = new ArrayList<>();
+        for (Object entity : resultList) {
+            enrichedResults.add(RelationshipUtil.loadRelationships(entity, entityManager, DEFAULT_RELATIONSHIP_DEPTH));
+        }
+        
+        return new PageImpl<>(enrichedResults, pageable, count);
     }
 }
